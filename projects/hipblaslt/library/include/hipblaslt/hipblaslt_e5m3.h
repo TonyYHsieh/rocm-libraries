@@ -126,9 +126,11 @@ namespace std
         return std::to_string(static_cast<float>(a));
     }
 
-    inline ostream& operator<<(ostream& stream, const hipblaslt_e5m3 a)
+    inline ostream& operator<<(ostream& stream, const hipblaslt_e5m3& a)
     {
-        return stream << static_cast<float>(a);
+        float val = static_cast<float>(a);
+        stream << val;
+        return stream;
     }
 } // namespace std
 

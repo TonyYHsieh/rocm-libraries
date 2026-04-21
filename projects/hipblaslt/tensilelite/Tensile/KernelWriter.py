@@ -2960,9 +2960,10 @@ class KernelWriter(metaclass=abc.ABCMeta):
           self.codes.localWriteMXSA = Module()
           self.codes.localWriteMXSB = Module()
 
-        if not isNGLL or kernel["ExpandPointerSwap"] or UnrollLoopSwapGlobalReadOrder or isDTVAB or \
+        callMakeSchedule = not isNGLL or kernel["ExpandPointerSwap"] or UnrollLoopSwapGlobalReadOrder or isDTVAB or \
           (kernel["PrefetchGlobalRead"] >= 3 and isNGLL) or \
-          (self.states.doPackPreSchedulingNextLoop and isNGLL):
+          (self.states.doPackPreSchedulingNextLoop and isNGLL)
+        if callMakeSchedule:
           # PAP would have GlobalRead and GlobalInc, but no localWrite
           # Get the perIterGlobalReadCode code for PAP (if PAP=On), else would be empty
           skipGlobalReadInc = False
@@ -2972,7 +2973,7 @@ class KernelWriter(metaclass=abc.ABCMeta):
           self.makeSchedule(kernel, tensorParametersA, tensorParametersB, localWriteEndIter, skipGlobalReadInc=skipGlobalReadInc, lastLoop=NLLlast, isNGLL=isNGLL)
           module.add(self.codes.unrollLoopHeader)
 
-        if isNGLL:
+        if isNGLL and not callMakeSchedule:
           globalReadIncACode  = self.codes.globalReadIncrements.findNamedItem("globalReadIncrementA")
           globalReadIncBCode  = self.codes.globalReadIncrements.findNamedItem("globalReadIncrementB")
           self.codes.perIterGlobalRead[u].addComment1("Global Read IncA")
@@ -3429,6 +3430,10 @@ class KernelWriter(metaclass=abc.ABCMeta):
         module.add(self._wait(kernel, tensorParametersA, tensorParametersB, -1, 0, -1, "4wait for local write"))
       module.add(self._syncThreads(kernel, "Wait GR->LW done, sync LDS0", memoryToken=self.states.memTokenLdsBuffer0))
 
+    if kernel["enableTDMA"] and kernel["enableTDMB"]:
+      module.add(self._wait(kernel, tensorParametersA, tensorParametersB, 0, -1, -1, "wait for tensor load to finish"))
+      module.add(self._syncThreads(kernel))
+
     # generate no Load Loop Body code
     module.add(self.noLoadLoopBody(kernel, tensorParametersA, tensorParametersB, pack, packPre, isOptNLL, isNGLL, NLLfirst, NLLlast, NLLindex=NLLindex, \
                                    NLLnum=NLLnum, useTailloopInNll=useTailloopInNll, remainPgr=remainPgr))
@@ -3466,6 +3471,10 @@ class KernelWriter(metaclass=abc.ABCMeta):
       if not kernel["NoLdsWriteCode"]:
         module.add(self._wait(kernel, tensorParametersA, tensorParametersB, 1, 0, -1, "1wait for local write"))
       module.add(self._syncThreads(kernel, "4sync for global read, PGR->LW needs sync LDS0", memoryToken=self.states.memTokenLdsBuffer0))
+
+    if kernel["PrefetchGlobalRead"] and kernel["enableTDMA"] and kernel["enableTDMB"]:
+      module.add(self._wait(kernel, tensorParametersA, tensorParametersB, 0, -1, -1, "wait for tensor load to finish"))
+      module.add(self._syncThreads(kernel))
 
     module.addComment1("Begin Each Unroll: Check VGPR.checkin for INT8 LW")
 
